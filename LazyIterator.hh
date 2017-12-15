@@ -9,15 +9,36 @@
 #include <algorithm>
 #include <iostream>
 #include <cstdlib>
+#include <limits>
 
-struct StopIteration : public std::exception {
+#define throw_stop_iteration()              \
+    throw StopIteration(__func__);
+
+
+#define must_ok()                           \
+    do {                                    \
+        if ( !ok() ) {                      \
+            throw_stop_iteration();         \
+        }                                   \
+    } while (0)
+
+class StopIteration
+    : public std::exception
+{
+public:
+    explicit StopIteration(const char* funcName)
+        : funcName_(funcName)
+    {}
+
     virtual const char *what() const noexcept {
-        return "StopIteration";
+        return funcName_;
     }
+private:
+    const char *funcName_ = nullptr;
 };
 
 template<class Derived>
-struct LazyIteratorBase;
+class LazyIteratorBase;
 
 template<class Iterator>
 class LazyIteratorRaw
@@ -57,13 +78,6 @@ public:
         return beg != end;
     }
 
-private:
-    void must_ok() {
-        if ( !ok() ) {
-            throw StopIteration();
-        }
-    }
-
 protected:
     Iterator beg;
     Iterator end;
@@ -98,12 +112,176 @@ public:
         return *this;
     }
 
+    auto reverse() {
+        using VectorIterator = typename std::vector<T>::iterator;
+        using ReverseVectorIterator = std::reverse_iterator<VectorIterator>;
+
+        return LazyIteratorRaw<ReverseVectorIterator>(
+                ReverseVectorIterator(this->end),
+                ReverseVectorIterator(this->beg)
+                );
+    }
 private:
     void init() {
         this->beg = vec.begin();
         this->end = vec.end();
     }
     std::vector<T> vec;
+};
+
+template<class Generator>
+class LazyIteratorWithGenerator
+    : public LazyIteratorBase<LazyIteratorWithGenerator<Generator>>
+{
+    using self_type = LazyIteratorWithGenerator;
+public:
+    using value_type = std::result_of_t<Generator()>;
+
+    LazyIteratorWithGenerator(Generator gen, ssize_t count)
+        : gen_(gen)
+        , count_(count)
+    {
+        if ( count_ != 0 ) {
+            cached_ = gen_();
+        }
+    }
+
+    self_type &operator++() {
+        must_ok();
+        next();
+        return *this;
+    }
+
+    self_type operator++(int) {
+        must_ok();
+        self_type res = *this;
+        next();
+        return res;
+
+    }
+
+    value_type operator*() {
+        must_ok();
+        return cached_;
+    }
+
+    /* decrement count_ to 0, 0 indicates termination,
+     * count_ == -1 means infinitely many
+     */
+    bool ok() {
+        return count_ == -1 || count_ > 0;
+    }
+private:
+    void next() {
+        if ( count_ != -1 ) {
+            if ( --count_ != 0 ) {
+                cached_ = gen_();
+            }
+        } else {
+            cached_ = gen_();
+        }
+    }
+
+    Generator       gen_;
+    value_type      cached_;
+    ssize_t         count_;
+};
+
+template<class Iterator, class StopPred>
+class LazyIteratorWithStop
+    : public LazyIteratorBase<LazyIteratorWithStop<Iterator, StopPred>>
+{
+    using self_type = LazyIteratorWithStop;
+public:
+    using value_type = typename Iterator::value_type;
+    static_assert(std::is_convertible_v<
+            std::result_of_t<StopPred(value_type)>, bool>,
+            "StopPred must return bool-convertible");
+
+    LazyIteratorWithStop(Iterator iter, StopPred pred)
+        : internal_iter_(iter)
+        , stop_pred_(pred)
+    {}
+
+    self_type &operator++() {
+        must_not_stop();
+        ++internal_iter_;
+        return *this;
+    }
+
+    self_type operator++(int) {
+        must_not_stop();
+        self_type res = *this;
+        ++internal_iter_;
+        return res;
+    }
+
+    value_type operator*() {
+        value_type v = *internal_iter_;
+        if ( stop_pred_(v) ) {
+            throw_stop_iteration();
+        }
+        return v;
+    }
+
+    bool ok() {
+        return internal_iter_.ok() && !stop_pred_(*internal_iter_);
+    }
+private:
+    void must_not_stop() {
+        if ( stop_pred_(*internal_iter_) ) {
+            throw_stop_iteration();
+        }
+    }
+
+    Iterator        internal_iter_;
+    StopPred        stop_pred_;
+};
+
+template<class Iterator>
+class LazyIteratorWithTake
+    : public LazyIteratorBase<LazyIteratorWithTake<Iterator>>
+{
+    using self_type = LazyIteratorWithTake;
+public:
+    using value_type = typename Iterator::value_type;
+
+    LazyIteratorWithTake(Iterator iter, size_t howmany)
+        : internal_iter_(iter)
+        , remain_(howmany)
+    {}
+
+    self_type &operator++() {
+        must_not_stop();
+        --remain_;
+        ++internal_iter_;
+        return *this;
+    }
+
+    self_type operator++(int) {
+        must_not_stop();
+        self_type res = *this;
+        --remain_;
+        ++internal_iter_;
+        return res;
+    }
+
+    value_type operator*() {
+        must_not_stop();
+        return *internal_iter_;
+    }
+
+    bool ok() {
+        return remain_ > 0 && internal_iter_.ok();
+    }
+private:
+    void must_not_stop() {
+        if ( !remain_ ) {
+            throw_stop_iteration();
+        }
+    }
+    Iterator        internal_iter_;
+    std::size_t     remain_;
 };
 
 template<class Iterator, class MapFunc>
@@ -194,6 +372,48 @@ private:
     }
 };
 
+template<class Iterator1, class Iterator2, class Zipper>
+class LazyIteratorWithZip
+    : public LazyIteratorBase<LazyIteratorWithZip<Iterator1, Iterator2, Zipper>>
+{
+    using self_type = LazyIteratorWithZip;
+public:
+    using value_type = std::result_of_t<
+        Zipper(typename Iterator1::value_type, typename Iterator2::value_type)
+        >;
+
+    LazyIteratorWithZip(Iterator1 iter1, Iterator2 iter2, Zipper zipper)
+        : internal_iter1_(iter1)
+        , internal_iter2_(iter2)
+        , zipper_(zipper)
+    {}
+
+    self_type &operator++() {
+        ++internal_iter1_;
+        ++internal_iter2_;
+        return *this;
+    }
+
+    self_type operator++(int) {
+        self_type res = *this;
+        ++internal_iter1_;
+        ++internal_iter2_;
+        return res;
+    }
+
+    value_type operator*() {
+        return zipper_(*internal_iter1_, *internal_iter2_);
+    }
+
+    bool ok() {
+        return internal_iter1_.ok() && internal_iter2_.ok();
+    }
+private:
+    Iterator1       internal_iter1_;
+    Iterator2       internal_iter2_;
+    Zipper          zipper_;
+};
+
 /* Joiner: bool (&After, value_type)
  *
  * After concept:
@@ -244,12 +464,6 @@ private:
     AfterType       after_;
     bool            cached_ = false;
 
-    void must_ok() {
-        if ( !ok() ) {
-            throw StopIteration();
-        }
-    }
-
     // after advance, internal_iter_ always points to the next position after cached_
     void advance() {
         if ( !internal_iter_.ok() ) return;
@@ -288,7 +502,8 @@ tWithCountJoiner(TWithCount<T> &tw, T const &t)
 }
 
 template<class Derived>
-struct LazyIteratorBase {
+class LazyIteratorBase {
+public:
     template<class Pred>
     auto filter(Pred pred)
     {
@@ -319,6 +534,19 @@ struct LazyIteratorBase {
 
     }
 
+    template<class Pred>
+    auto stopWhen(Pred pred) {
+        return LazyIteratorWithStop<Derived, Pred>(
+                *static_cast<Derived*>(this), pred
+                );
+    }
+
+    auto take(std::size_t howmany) {
+        return LazyIteratorWithTake<Derived>(
+                *static_cast<Derived*>(this), howmany
+                );
+    }
+
     template<class StoreIterator>
     void store(StoreIterator store_iter) {
         while ( static_cast<Derived*>(this)->ok() ) {
@@ -345,6 +573,41 @@ struct LazyIteratorBase {
         return res;
     }
 
+    /*
+     * Pred: value_type -> bool
+     */
+    template<class Pred>
+    Derived &skipUntil(Pred pred) {
+        while ( static_cast<Derived*>(this)->ok() && !pred(static_cast<Derived*>(this)->operator*()) ) {
+            static_cast<Derived*>(this)->operator++();
+        }
+        return *static_cast<Derived*>(this);
+    }
+
+    std::size_t count() {
+        std::size_t cnt = 0;
+        while ( static_cast<Derived*>(this)->ok() ) {
+            ++cnt;
+            static_cast<Derived*>(this)->operator++();
+        }
+        return cnt;
+    }
+
+    auto sum() {
+        return reduce([] (auto const &a, auto const &b) { return a + b; },
+                typename Derived::value_type{});
+    }
+
+    auto numeric_min() {
+        return reduce([] (auto const &a, auto const &b) { return a < b ? a : b; },
+                std::numeric_limits<typename Derived::value_type>::max());
+    }
+
+    auto numeric_max() {
+        return reduce([] (auto const &a, auto const &b) { return a > b ? a : b; },
+                std::numeric_limits<typename Derived::value_type>::min());
+    }
+
     template<class Pred>
     void foreach(Pred pred) {
         while ( static_cast<Derived*>(this)->ok() ) {
@@ -359,6 +622,9 @@ struct LazyIteratorBase {
      *
      * template<class Compare>
      * self_type &sort(Compare compare);
+     *
+     * LazyIteratorRaw<ReverseVectorIterator>
+     * reverse();
      */
 
     auto done() {
@@ -379,5 +645,29 @@ makeLazyIterator(Iterator beg, Iterator end)
     return LazyIteratorRaw<Iterator>(beg, end);
 }
 
-#endif /* _LAZYITERATOR_HH_ */
+template<class Generator>
+auto
+makeLazyIteratorFromGenerator(Generator gen, ssize_t max_count = -1)
+{
+    return LazyIteratorWithGenerator<Generator>(gen, max_count);
+}
 
+template<class Iterator1, class Iterator2, class Zipper>
+auto
+makeLazyIteratorFromZipWith(Iterator1 iter1, Iterator2 iter2, Zipper zipper)
+{
+    return LazyIteratorWithZip<Iterator1, Iterator2, Zipper>(
+            iter1, iter2, zipper
+            );
+}
+
+template<class Iterator1, class Iterator2>
+auto
+makeLazyIteratorFromZip(Iterator1 iter1, Iterator2 iter2)
+{
+    return makeLazyIteratorFromZipWith(iter1, iter2,
+            [] (auto const &a, auto const &b) { return std::make_pair(a, b); }
+            );
+}
+
+#endif /* _LAZYITERATOR_HH_ */

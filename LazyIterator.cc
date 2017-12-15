@@ -1,4 +1,5 @@
 #include "LazyIterator.hh"
+#include "testings.hh"
 
 #include <iostream>
 #include <string>
@@ -12,6 +13,128 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+
+struct StupidGen {
+    int now = 0;
+
+    int operator()() {
+        return now++;
+    }
+};
+
+template<class Int>
+struct StupidConjecture {
+    Int start;
+
+    explicit StupidConjecture(Int s)
+        : start(s)
+    {}
+
+    Int operator() () {
+        Int res = start;
+        if ( start % 2 == 0 ) {
+            start /= 2;
+        } else {
+            start = 3 * start + 1;
+        }
+        return res;
+    }
+};
+
+auto printer = [] (const auto &e) { std::cout << e << "\n"; };
+
+void test7() {
+    std::vector<int> a = {1, 5, 8, 23, 6, 17, 11, 23, 12, 2};
+    std::vector<std::string> b = {
+        "hello", "world", "goodbye", "moon", "milky-way",
+        "congratulation", "signification", "nominal",
+    };
+
+    makeLazyIteratorFromZip(
+            makeLazyIterator(a.begin(), a.end()),
+            makeLazyIterator(b.begin(), b.end())
+            )
+        .map(
+                [] (auto const &e) {
+                    return std::make_pair(e.second, e.second.size());
+                })
+        .filter(
+                [] (auto const &e) {
+                    return e.second > 4;
+                })
+        .stopWhen(
+                [] (auto const &e) {
+                    return e.first[0] == 's';
+                })
+        .take(14)
+        .done()
+        .sort(
+                [] (auto const &a, auto const &b) {
+                    return a.second > b.second;
+                })
+        .reverse()
+        .foreach(
+                [] (auto const &e) {
+                    std::cout << "[" << e.first << "," << e.second << "]\n";
+                })
+        ;
+
+}
+
+void test6() {
+    long start = 223036523;
+
+    {
+        TimeInterval _("Conjecture Lazy");
+
+        makeLazyIteratorFromGenerator(StupidConjecture<long>(start))
+            .stopWhen([] (auto e) { return e == 1; })
+            .foreach(printer)
+            ;
+    }
+
+    std::vector<int> vec{
+        1,2,3,4,
+    };
+
+    makeLazyIterator(vec.begin(), vec.end())
+        .stopWhen([] (auto e) { return e > 100; })
+        .take(2)
+        .foreach(printer)
+        ;
+}
+
+void test5() {
+    auto iter = makeLazyIteratorFromGenerator(StupidGen(), 7)
+        ;
+
+    iter
+        .dup()
+        .foreach( printer )
+        ;
+
+    std::cout << "Count: " << (
+            iter
+                .dup()
+                .count()
+            )
+        << "\n";
+
+    auto iter2 = makeLazyIteratorFromGenerator(StupidGen())
+                .stopWhen([] (int e) { return e > 50; })
+                .skipUntil([] (int e) { return e > 25; })
+                .map([] (int e) { return e * e; })
+                .filter([] (int e) { return e % 3 == 1; })
+                ;
+    iter2
+                .foreach(printer);
+
+    std::cout << "------- Start Conjecture:\n";
+    makeLazyIteratorFromGenerator(StupidConjecture<long>(10343))
+                    .stopWhen([] (auto e) { return e == 1; })
+                    .foreach(printer)
+                    ;
+}
 
 void test4() {
     std::vector<int> vec(1000000);
@@ -28,6 +151,7 @@ void test4() {
 
     std::cout << "---- Print foreach:\n";
     iter2
+                .skipUntil([] (auto const &e) { return e.t > 50; })
                 .foreach([] (auto const &e) { std::cout << e << "\n"; })
                 ;
 
@@ -36,7 +160,8 @@ void test4() {
     auto sum = iter
                 .dup()
                 .map([] (auto const &e) { return e.count; })
-                .reduce([] (int a, int b) { return a + b; }, 0)
+                .sum()
+//                .reduce([] (int a, int b) { return a + b; }, 0)
                 ;
 
     std::cout << "Sum: " << sum << ", Average: " << 1.0 * sum / vec.size() << "\n";
@@ -44,14 +169,16 @@ void test4() {
     auto minimal = iter
                     .dup()
                     .map([] (auto const &e) { return e.count; })
-                    .reduce([] (int a, int b) { return a < b ? a : b; }, std::numeric_limits<int>::max())
+                    .numeric_min()
+//                    .reduce([] (int a, int b) { return a < b ? a : b; }, std::numeric_limits<int>::max())
                     ;
     std::cout << "Minimal: " << minimal << "\n";
 
     auto maximal = iter
                     .dup()
                     .map([] (auto const &e) { return e.count; })
-                    .reduce([] (int a, int b) { return a > b ? a : b; }, std::numeric_limits<int>::min())
+                    .numeric_max()
+//                    .reduce([] (int a, int b) { return a > b ? a : b; }, std::numeric_limits<int>::min())
                     ;
     std::cout << "Maximal: " << maximal << "\n";
 
@@ -141,5 +268,7 @@ void test1() {
 int main() {
 //    test2();
 //    test3();
-    test4();
+//    test4();
+//    test5();
+    test7();
 }

@@ -79,6 +79,21 @@ void test7() {
                 })
         ;
 
+    auto iter77 = makeLazyIterator(b.begin(), b.end())
+                    .done()
+                    ;
+
+    auto iter88 = iter77.reverse();
+    try {
+        *iter77;
+    } catch (StopIteration const &) {
+        std::cout << "should catch StopIteration\n";
+    }
+
+    while ( iter88.ok() ) {
+        std::cout << *iter88 << "\n";
+        ++iter88;
+    }
 }
 
 void test6() {
@@ -266,9 +281,9 @@ void test1() {
 }
 
 int main() {
-//    test2();
-//    test3();
-//    test4();
-//    test5();
+    test2();
+    test3();
+    test4();
+    test5();
     test7();
 }

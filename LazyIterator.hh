@@ -81,23 +81,40 @@ public:
 protected:
     Iterator beg;
     Iterator end;
+
+    void reset() {
+        beg = end = Iterator{};
+    }
 };
 
-template<class T>
+template<
+    class T,
+    class VectorIterator = typename std::vector<T>::iterator>
 class LazyIteratorWithVectorContent
-    : public LazyIteratorRaw<typename std::vector<T>::iterator>
+    : public LazyIteratorRaw<VectorIterator>
 {
     using self_type = LazyIteratorWithVectorContent<T>;
 public:
-    LazyIteratorWithVectorContent(std::vector<T> &&vec)
+    LazyIteratorWithVectorContent(std::vector<T> &&vec, VectorIterator vecbeg, VectorIterator vecend)
         : vec(std::move(vec))
     {
+        this->beg = vecbeg;
+        this->end = vecend;
+    }
+
+    explicit LazyIteratorWithVectorContent(std::vector<T> &&vec)
+        : vec(std::move(vec))
+    {
+        static_assert(std::is_same_v<VectorIterator, typename std::vector<T>::iterator>,
+                "Call this ctor only when VectorIterator == typename std::vector<T>::iterator");
         init();
     }
 
-    LazyIteratorWithVectorContent(std::vector<T> const &vec)
+    explicit LazyIteratorWithVectorContent(std::vector<T> const &vec)
         : vec(vec)
     {
+        static_assert(std::is_same_v<VectorIterator, typename std::vector<T>::iterator>,
+                "Call this ctor only when VectorIterator == typename std::vector<T>::iterator");
         init();
     }
 
@@ -113,12 +130,15 @@ public:
     }
 
     auto reverse() {
-        using VectorIterator = typename std::vector<T>::iterator;
         using ReverseVectorIterator = std::reverse_iterator<VectorIterator>;
+        auto rbeg = ReverseVectorIterator(this->end),
+             rend = ReverseVectorIterator(this->beg);
 
-        return LazyIteratorRaw<ReverseVectorIterator>(
-                ReverseVectorIterator(this->end),
-                ReverseVectorIterator(this->beg)
+        /* defensive */
+        this->reset();
+
+        return LazyIteratorWithVectorContent<T, ReverseVectorIterator>(
+                std::move(vec), rbeg, rend
                 );
     }
 private:

@@ -1,0 +1,48 @@
+- - - Create Lazy Iterator
+
+makeLazyIterator():
+    Construct a lazy iterator from a pair of stl compatible iterators
+
+makeLazyIteratorFromGenerator():
+    Construct a lazy iterator from a generator function auto(),
+    a max_count can be specified to stop
+
+makeLazyIteratorFromZip() / makeLazyIteratorFromZipWith():
+    Construct a lazy iterator from 2 lazy iterators,
+    the value_type of the constructed iterator is
+        std::result_of_t<Zipper(typename Iterator1::value_type, typename
+        Iterator2::value_type)
+
+    Without "With", the zipper function is the default one: std::make_pair()
+
+
+
+- - - Manipulate Lazy Iterator
+
+-- transformation
+map()
+filter()
+groupBy()
+groupSame()
+
+-- start/stop control
+skipUntil()  [return itself]
+stopWhen()
+take()
+
+-- do real evaluation
+done() [has internal vector]:
+    Evaluate until termination, put the result into an internal vector
+
+-- fetch result
+store()
+reduce()
+foreach()
+count()
+sum()
+numeric_min()
+numeric_max()
+
+-- only for Lazy Iterator returned by done():
+sort() [return itself, has internal vector]
+reverse() [clear the original, has internal vector moved from the original]

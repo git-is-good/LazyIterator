@@ -3,6 +3,38 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <tuple>
+
+template<
+    class Tuple,
+    class Func,
+    size_t Cur, size_t N
+    >
+struct tuple_foreach_impl {
+    static void do_(Tuple const &tp, Func func) {
+        static_assert(Cur < N && N != 0, "");
+        func(std::get<Cur>(tp));
+        tuple_foreach_impl<Tuple, Func, Cur + 1, N>::do_(tp, func);
+    }
+};
+
+template<
+    class Tuple,
+    class Func,
+    size_t N
+    >
+struct tuple_foreach_impl<Tuple, Func, N, N> {
+    static void do_(Tuple const &tp, Func func) {}
+};
+
+template<class Tuple, class Func>
+void
+tuple_foreach(Tuple const &tp, Func func)
+{
+    tuple_foreach_impl<
+        Tuple, Func, 0, std::tuple_size<Tuple>::value
+        >::do_(tp, func);
+}
 
 template<class to_check>
 struct check_exist {

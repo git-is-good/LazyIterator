@@ -116,8 +116,10 @@ struct NegateNode
 };
 
 void test3() {
-    StreamAdapter s1("(123 + - ( 765 * 342 )) * 34 + 42 * 76");
-    //StreamAdapter s1("(123 + 765)");
+//    StreamAdapter s1("(123 + - ( 765 * 342 + 789)) * 34 + 42 * 76");
+    StreamAdapter s1("(123 + - ( 765 * 342 + \"hello\" )) * 34 + 42 * 76");
+    //StreamAdapter s1("123 + (123 * 456 + 765)");
+//    StreamAdapter s1("456 + 123 + 765");
 
     DeferredParser expr;
 //    expr
@@ -126,6 +128,7 @@ void test3() {
 //        ;
 
     auto unit = (ParserInt<>())
+              | (ParserLiteral<>())
               | ((ParserString<>("(") >> expr >> ParserString<>(")"))
                  [(
                      [] ( auto &&tp ) -> YieldResultPtr {
@@ -188,18 +191,42 @@ void test3() {
          | (factor)
          ;
 
-    expr >>= s1;
+    assert( expr >>= s1 );
     auto res = expr.getResult();
     res.ptr_->show(std::cout);
     std::cout << "\n";
 
-//    using temp_type = std::tuple<YieldResult, YieldResult, YieldResult>;
-
 //    assert( (expr >> ParserEnd<>()) >>= s1 );
 }
 
+/* 
+ * {
+ *  "Coffee" : {
+ *      "Java" : 12,
+ *      "Indo" : "high",
+ *      },
+ *  
+ *  "Orange" : {
+ *      "Hot" : "bad",
+ *      "Cold" : 18,
+ *  },
+ * }
+ */
+
 void test4() {
 
+    DeferredParser block;
+
+    auto unit = ParserInt<>()
+              | ParserLiteral<>()
+              | block
+              ;
+
+    auto item = ParserLiteral<>() >> ParserString<>(":") >> unit >> ParserString<>(",");
+
+    block = many(item);
+
+    auto format = block >> ParserEnd<>();
 
 }
 

@@ -155,6 +155,65 @@ private:
     std::stack<int>         counts_;
 };
 
+//TODO: add escape chars
+template<
+    class SkipPolicy = SkipPolicySpace
+    >
+class ParserLiteral
+    : public ParserBase<ParserLiteral<SkipPolicy>>
+{
+public:
+    using ResultTupleType = std::tuple<YieldResultPtr>;
+
+    template<class Stream>
+    bool parse(Stream &stream) {
+        skipper_.skip(stream);
+        const char *p = stream.next(1);
+        if ( !p || *p != '\"' ) {
+            if ( p ) stream.put(1);
+            skipper_.unskip(stream);
+            return false;
+        }
+
+        const char *start = p;
+        int count = 1;
+        while ( (p = stream.next(1)) != nullptr && *p != '\"' ) {
+            ++count;
+        }
+
+        if ( !p ) {
+            // "... unexpected EOF
+            stream.put(count);
+            skipper_.unskip(stream);
+            return false;
+        } else {
+            ss_ = std::string(start + 1, p);
+            counts_.push(count + 1);
+            return true;
+        }
+    }
+
+    template<class Stream>
+    void unparse(Stream &stream) {
+        assert(!counts_.empty());
+        stream.put(counts_.top());
+        counts_.pop();
+        skipper_.unskip(stream);
+    }
+
+    YieldResultPtr getResult() {
+        return std::move(std::make_unique<StringYieldResult>(ss_));
+    }
+
+    ResultTupleType getTuple() {
+        return std::move(std::make_tuple(getResult()));
+    }
+private:
+    SkipPolicy              skipper_;
+    std::string             ss_;
+    std::stack<int>         counts_;
+};
+
 template<
     class SkipPolicy = SkipPolicySpace
     >

@@ -61,6 +61,7 @@ public:
 
     template<class Stream>
     bool parse(Stream &stream) {
+        assert( result_.ptr_ == nullptr );
         if ( parserA.parse(stream) ) {
             whichs.push(Which_A);
             result_ = parserA.getResult();
@@ -80,7 +81,6 @@ public:
     void unparse(Stream &stream) {
         assert( !whichs.empty() );
 
-        result_ = nullptr;
         int which = whichs.top();
         whichs.pop();
 
@@ -99,13 +99,14 @@ public:
 
     auto getTuple() {
         return std::move(
-                std::make_tuple<YieldResultPtr>(std::move(result_))
+                std::make_tuple<YieldResultPtr>(getResult())
                 );
     }
 private:
     ParserA             parserA;
     ParserB             parserB;
     std::stack<int>     whichs;
+
     YieldResultPtr      result_;
 };
 
@@ -129,12 +130,21 @@ public:
             return false;
         }
 
+        /* This parser must fetch the result immediately,
+         * getTuple() or getResult() is called whenever a parser
+         * succeeds, this is our semantics.
+         * In fact, because of DeferredParser, a parser might call
+         * itself during its call to its template parameters,
+         * if getResult() is not called immediately, the result
+         * might be overwritten.
+         */
+        auto tpa = parserA.getTuple();
         if ( !parserB.parse(stream) ) {
             parserA.unparse(stream);
             return false;
         }
 
-        tp_ = std::tuple_cat(parserA.getTuple(), parserB.getTuple());
+        tp_ = std::tuple_cat(std::move(tpa), parserB.getTuple());
 
         return true;
     }
@@ -143,6 +153,8 @@ public:
     void unparse(Stream &stream) {
         parserB.unparse(stream);
         parserA.unparse(stream);
+
+        tp_ = ResultTupleType{};
     }
 
     YieldResultPtr getResult() {

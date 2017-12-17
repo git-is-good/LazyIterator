@@ -19,6 +19,12 @@
 #include <type_traits>
 #include <cassert>
 
+class AbstractYieldResult
+{
+public:
+
+};
+
 class StreamAdapter
 {
 public:
@@ -154,6 +160,14 @@ struct parser_traits
 //            std::is_base_of<DeferredParser, Parser>::value,
 //            Parser&, Parser
 //            >::type;
+};
+
+template<class Parser>
+class SemanticParser
+{
+public:
+
+
 };
 
 class ParserEpsilon
@@ -402,34 +416,34 @@ private:
     ParserB         parserB;
 };
 
-template<class Parser>
-class ParserMaybe
-{
-public:
-    ParserMaybe(Parser const &p)
-        : p_(p)
-    {}
-
-    template<class Stream>
-    bool parse(Stream &stream) {
-        reallis.push(p_.parse(stream));
-        return true;
-    }
-
-    template<class Stream>
-    bool unparse(Stream &stream) {
-        assert( !reallis.empty() );
-
-        if ( reallis.top() ) {
-            p_.unparse(stream);
-        }
-        reallis.pop();
-    }
-
-private:
-    std::stack<bool>    reallis;
-    Parser              p_;
-};
+//template<class Parser>
+//class ParserMaybe
+//{
+//public:
+//    ParserMaybe(Parser const &p)
+//        : p_(p)
+//    {}
+//
+//    template<class Stream>
+//    bool parse(Stream &stream) {
+//        reallis.push(p_.parse(stream));
+//        return true;
+//    }
+//
+//    template<class Stream>
+//    bool unparse(Stream &stream) {
+//        assert( !reallis.empty() );
+//
+//        if ( reallis.top() ) {
+//            p_.unparse(stream);
+//        }
+//        reallis.pop();
+//    }
+//
+//private:
+//    std::stack<bool>    reallis;
+//    Parser              p_;
+//};
 
 template<class Parser>
 class ParserMany
@@ -460,22 +474,22 @@ private:
 
 template<class ParserA, class ParserB>
 auto
-operator|(ParserA const &a, ParserB const &b)
+operator|(ParserA &&a, ParserB &&b)
 {
     return ParserAlternative<
         typename parser_traits<ParserA>::pass_type,
         typename parser_traits<ParserB>::pass_type
-        >(const_cast<ParserA&>(a), const_cast<ParserB&>(b));
+        >(std::forward<ParserA>(a), std::forward<ParserB>(b));
 }
 
 template<class ParserA, class ParserB>
 auto
-operator>>(ParserA const &a, ParserB const &b)
+operator>>(ParserA &&a, ParserB &&b)
 {
     return ParserChain<
         typename parser_traits<ParserA>::pass_type,
         typename parser_traits<ParserB>::pass_type
-        >(const_cast<ParserA&>(a), const_cast<ParserB&>(b));
+        >(std::forward<ParserA>(a), std::forward<ParserB>(b));
 }
 
 template<class Parser, class Stream>
@@ -487,23 +501,28 @@ operator>>=(Parser &&p, Stream &stream)
 
 template<class Parser>
 auto
-maybe(Parser const &p)
+maybe(Parser &&p)
 {
-    return ParserMaybe<Parser>(p);
+    return std::forward<Parser>(p) >> ParserEpsilon();
+//    return ParserMaybe<
+//        typename parser_traits<Parser>::pass_type
+//        >(std::forward<Parser>(p));
 }
 
 template<class Parser>
 auto
-many(Parser const &p)
+many(Parser &&p)
 {
-    return ParserMany<Parser>(p);
+    return ParserMany<
+        typename parser_traits<Parser>::pass_type
+        >(std::forward<Parser>(p));
 }
 
 template<class Parser>
 auto
-manyIndeed(Parser const &p)
+manyIndeed(Parser &&p)
 {
-    return p >> many(p);
+    return std::forward<Parser>(p) >> many(std::forward<Parser>(p));
 }
 
 void test() {
@@ -516,19 +535,27 @@ void test() {
           );
 
     assert(
-            (ParserString<>(" world") | ParserString<>("good")) >>= s1
+            (ParserString<>("world") | ParserString<>("good")) >>= s1
           );
 
     assert(
-            (ParserString<>("hello") >> ParserChar<>(' ') >> ParserString<>("world")) >>= s2
+            (ParserString<SkipPolicyNone>("hello")
+             >> ParserChar<SkipPolicyNone>(' ')
+             >> ParserString<SkipPolicyNone>("world")
+            ) >>= s2
           );
+
     assert(!(
-            (ParserString<>("hello") >> ParserChar<>(' ') >> ParserString<>("world ")) >>= s3
-          ));
+            (ParserString<SkipPolicyNone>("hello")
+             >> ParserChar<SkipPolicyNone>(' ')
+             >> ParserString<SkipPolicyNone>("world ")
+            ) >>= s3
+            )
+          );
 
-    StreamAdapter s4("hello hello hello hello hello hello hello hello hello");
+    StreamAdapter s4("hello hello hello hello hello hello");
     assert(
-            (manyIndeed(ParserString<>("hello ")) >> ParserString<>("hello") >> ParserEnd<>()) >>= s4
+            (manyIndeed(ParserString<>("hello")) >> ParserEnd<>()) >>= s4
           );
 }
 
@@ -597,7 +624,7 @@ void test3() {
 }
 
 int main() {
-//    test();
-//    test2();
+    test();
+    test2();
     test3();
 }

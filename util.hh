@@ -4,6 +4,11 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+template<class to_check>
+struct check_exist {
+    static const bool value = true;
+};
+
 struct NonCopyable {
     using self_type = NonCopyable;
 

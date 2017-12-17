@@ -13,6 +13,8 @@
 #include <utility>
 #include <memory>
 
+//TODO: add regex engine to parse token
+
 struct IntYieldResult
     : public YieldResult
 {
@@ -40,6 +42,7 @@ struct StringYieldResult
     std::string s_;
 };
 
+//FIXME: now ParserChar return fake result_
 template<
     class SkipPolicy = SkipPolicySpace
     >

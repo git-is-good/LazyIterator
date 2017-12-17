@@ -214,6 +214,8 @@ void test3() {
  */
 
 void test4() {
+//    StreamAdapter s1("{ \"Coffee\" : 12, \"Chacolate\" : \"beau\", }");
+    StreamAdapter s1("{\"Coffee\" : { \"Java\" : 12, \"Indo\" : \"high\", }, \"Orange\" : { \"Hot\" : \"bad\", \"Cold\" : 18, }, }");
 
     DeferredParser block;
 
@@ -224,10 +226,11 @@ void test4() {
 
     auto item = ParserLiteral<>() >> ParserString<>(":") >> unit >> ParserString<>(",");
 
-    block = many(item);
+    block = ParserString<>("{") >> many(item) >> ParserString<>("}");
 
     auto format = block >> ParserEnd<>();
 
+    assert(format >>= s1);
 }
 
 int main() {

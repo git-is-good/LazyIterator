@@ -188,14 +188,19 @@ public:
 
     template<class Stream>
     bool parse(Stream &stream) {
+        int count = 0;
         while ( p_.parse(stream) )
-            ++count_;
+            ++count;
+        counts_.push(count);
         return true;
     }
     
     template<class Stream>
     void unparse(Stream &stream) {
-        while ( count_-- ) {
+        assert(!counts_.empty());
+        auto count = counts_.top();
+        counts_.pop();
+        while ( count-- ) {
             p_.unparse(stream);
         }
     }
@@ -211,7 +216,7 @@ public:
     }
 private:
     Parser          p_;
-    std::size_t     count_ = 0;
+    std::stack<int> counts_;
 
     YieldResultPtr  result_;
 };
